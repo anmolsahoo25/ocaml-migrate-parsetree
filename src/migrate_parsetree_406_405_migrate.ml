@@ -291,6 +291,8 @@ and copy_pattern_desc :
         (copy_loc (fun x  -> x) x0)
   | From.Parsetree.Ppat_exception x0 ->
       To.Parsetree.Ppat_exception (copy_pattern x0)
+  | From.Parsetree.Ppat_effect (_,_) ->
+      migration_error Location.none Def.PSig
   | From.Parsetree.Ppat_extension x0 ->
       To.Parsetree.Ppat_extension (copy_extension x0)
   | From.Parsetree.Ppat_open (x0,x1) ->
@@ -476,6 +478,8 @@ and copy_structure_item_desc :
       To.Parsetree.Pstr_extension
         ((copy_extension x0),
           (copy_attributes x1))
+  | From.Parsetree.Pstr_effect _ ->
+      migration_error Location.none Def.PSig
 
 and copy_include_declaration :
   From.Parsetree.include_declaration ->
@@ -796,6 +800,8 @@ and copy_signature_item_desc :
       To.Parsetree.Psig_extension
         ((copy_extension x0),
           (copy_attributes x1))
+  | From.Parsetree.Psig_effect _ ->
+      migration_error Location.none Def.PSig
 
 and copy_class_type_declaration :
   From.Parsetree.class_type_declaration ->
@@ -1461,6 +1467,7 @@ and copy_out_ext_status :
   | From.Outcometree.Oext_first  -> To.Outcometree.Oext_first
   | From.Outcometree.Oext_next  -> To.Outcometree.Oext_next
   | From.Outcometree.Oext_exception  -> To.Outcometree.Oext_exception
+  | From.Outcometree.Oext_effect -> migration_error Location.none Def.PSig
 
 and copy_out_extension_constructor :
   From.Outcometree.out_extension_constructor ->

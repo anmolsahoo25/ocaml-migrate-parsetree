@@ -285,6 +285,8 @@ module Parsetree = struct
            *)
     | Ppat_exception of pattern
           (* exception P *)
+    | Ppat_effect of pattern * pattern
+          (* effect P P *)
     | Ppat_extension of extension
           (* [%id] *)
     | Ppat_open of Longident.t loc * pattern
@@ -544,6 +546,26 @@ module Parsetree = struct
            | C = D
          *)
 
+  and effect_constructor (*IF_CURRENT = Parsetree.effect_constructor*) =
+    {
+     peff_name: string loc;
+     peff_kind : effect_constructor_kind;
+     peff_loc : Location.t;
+     peff_attributes: attributes; (* C [@id1] [@id2] of ... *)
+    }
+
+  and effect_constructor_kind (*IF_CURRENT = Parsetree.effect_constructor_kind*) =
+    Peff_decl of core_type list * core_type
+      (*
+         | C of T1 * ... * Tn     ([T1; ...; Tn], None)
+         | C: T0                  ([], Some T0)
+         | C: T1 * ... * Tn -> T0 ([T1; ...; Tn], Some T0)
+       *)
+  | Peff_rebind of Longident.t loc
+      (*
+         | C = D
+       *)
+
   (** {2 Class language} *)
 
   (* Type expressions for the class language *)
@@ -758,6 +780,8 @@ module Parsetree = struct
           (* type t1 += ... *)
     | Psig_exception of extension_constructor
           (* exception C of T *)
+    | Psig_effect of effect_constructor
+          (* effect C : T -> T *)
     | Psig_module of module_declaration
           (* module X : MT *)
     | Psig_recmodule of module_declaration list
@@ -886,6 +910,9 @@ module Parsetree = struct
     | Pstr_exception of extension_constructor
           (* exception C of T
              exception C = M.X *)
+    | Pstr_effect of effect_constructor
+          (* effect C : T -> T
+             effect C = M.X *)
     | Pstr_module of module_binding
           (* module X = ME *)
     | Pstr_recmodule of module_binding list
@@ -1194,6 +1221,7 @@ module Ast_helper : sig
       val unpack: ?loc:loc -> ?attrs:attrs -> str -> pattern
       val open_: ?loc:loc -> ?attrs:attrs  -> lid -> pattern -> pattern
       val exception_: ?loc:loc -> ?attrs:attrs -> pattern -> pattern
+      val effect_: ?loc:loc -> ?attrs:attrs -> pattern -> pattern -> pattern
       val extension: ?loc:loc -> ?attrs:attrs -> extension -> pattern
     end
 
@@ -1301,6 +1329,10 @@ module Ast_helper : sig
         extension_constructor
       val rebind: ?loc:loc -> ?attrs:attrs -> ?docs:docs -> ?info:info ->
         str -> lid -> extension_constructor
+
+      val effect_constructor: ?loc:loc -> ?attrs:attrs -> str -> effect_constructor_kind -> effect_constructor
+      val effect_decl: ?loc:loc -> ?attrs:attrs -> ?args:core_type list -> str -> core_type -> effect_constructor
+      val effect_rebind: ?loc:loc -> ?attrs:attrs -> str -> lid -> effect_constructor
     end
 
   (** {2 Module language} *)
@@ -1349,6 +1381,7 @@ module Ast_helper : sig
       val type_: ?loc:loc -> rec_flag -> type_declaration list -> signature_item
       val type_extension: ?loc:loc -> type_extension -> signature_item
       val exception_: ?loc:loc -> extension_constructor -> signature_item
+      val effect_: ?loc:loc -> effect_constructor -> signature_item
       val module_: ?loc:loc -> module_declaration -> signature_item
       val rec_module: ?loc:loc -> module_declaration list -> signature_item
       val modtype: ?loc:loc -> module_type_declaration -> signature_item
@@ -1372,6 +1405,7 @@ module Ast_helper : sig
       val type_: ?loc:loc -> rec_flag -> type_declaration list -> structure_item
       val type_extension: ?loc:loc -> type_extension -> structure_item
       val exception_: ?loc:loc -> extension_constructor -> structure_item
+      val effect_: ?loc:loc -> effect_constructor -> structure_item
       val module_: ?loc:loc -> module_binding -> structure_item
       val rec_module: ?loc:loc -> module_binding list -> structure_item
       val modtype: ?loc:loc -> module_type_declaration -> structure_item
@@ -1661,6 +1695,7 @@ end = struct
     let unpack ?loc ?attrs a = mk ?loc ?attrs (Ppat_unpack a)
     let open_ ?loc ?attrs a b = mk ?loc ?attrs (Ppat_open (a, b))
     let exception_ ?loc ?attrs a = mk ?loc ?attrs (Ppat_exception a)
+    let effect_ ?loc ?attrs a b = mk ?loc ?attrs (Ppat_effect(a, b))
     let extension ?loc ?attrs a = mk ?loc ?attrs (Ppat_extension a)
   end
 
@@ -1750,6 +1785,7 @@ end = struct
     let type_ ?loc rec_flag a = mk ?loc (Psig_type (rec_flag, a))
     let type_extension ?loc a = mk ?loc (Psig_typext a)
     let exception_ ?loc a = mk ?loc (Psig_exception a)
+    let effect_ ?loc a = mk ?loc (Psig_effect a)
     let module_ ?loc a = mk ?loc (Psig_module a)
     let rec_module ?loc a = mk ?loc (Psig_recmodule a)
     let modtype ?loc a = mk ?loc (Psig_modtype a)
@@ -1775,6 +1811,7 @@ end = struct
     let type_ ?loc rec_flag a = mk ?loc (Pstr_type (rec_flag, a))
     let type_extension ?loc a = mk ?loc (Pstr_typext a)
     let exception_ ?loc a = mk ?loc (Pstr_exception a)
+    let effect_ ?loc a = mk ?loc (Pstr_effect a)
     let module_ ?loc a = mk ?loc (Pstr_module a)
     let rec_module ?loc a = mk ?loc (Pstr_recmodule a)
     let modtype ?loc a = mk ?loc (Pstr_modtype a)
@@ -2058,6 +2095,29 @@ end = struct
        pext_attributes = add_docs_attrs docs (add_info_attrs info attrs);
       }
 
+    let effect_constructor ?(loc = !default_loc) ?(attrs = []) name kind =
+      {
+       peff_name = name;
+       peff_kind = kind;
+       peff_loc = loc;
+       peff_attributes = attrs;
+      }
+  
+    let effect_decl ?(loc = !default_loc) ?(attrs = []) ?(args = []) name res =
+      {
+       peff_name = name;
+       peff_kind = Peff_decl(args, res);
+       peff_loc = loc;
+       peff_attributes = attrs;
+      }
+  
+    let effect_rebind ?(loc = !default_loc) ?(attrs = []) name lid =
+      {
+       peff_name = name;
+       peff_kind = Peff_rebind lid;
+       peff_loc = loc;
+       peff_attributes = attrs;
+      }
   end
 
   module Csig = struct
@@ -2135,6 +2195,8 @@ module Ast_mapper : sig
     class_type_field: mapper -> class_type_field -> class_type_field;
     constructor_declaration: mapper -> constructor_declaration
                              -> constructor_declaration;
+    effect_constructor: mapper -> effect_constructor
+                         -> effect_constructor;
     expr: mapper -> expression -> expression;
     extension: mapper -> extension -> extension;
     extension_constructor: mapper -> extension_constructor
@@ -2218,6 +2280,8 @@ end = struct
     class_type_field: mapper -> class_type_field -> class_type_field;
     constructor_declaration: mapper -> constructor_declaration
                              -> constructor_declaration;
+    effect_constructor: mapper -> effect_constructor
+                         -> effect_constructor;
     expr: mapper -> expression -> expression;
     extension: mapper -> extension -> extension;
     extension_constructor: mapper -> extension_constructor
@@ -2355,6 +2419,22 @@ end = struct
         ~loc:(sub.location sub pext_loc)
         ~attrs:(sub.attributes sub pext_attributes)
 
+    let map_effect_constructor_kind sub = function
+      Peff_decl(ctl, cto) ->
+        Peff_decl(List.map (sub.typ sub) ctl, sub.typ sub cto)
+    | Peff_rebind li ->
+        Peff_rebind (map_loc sub li)
+
+  let map_effect_constructor sub
+      {peff_name;
+       peff_kind;
+       peff_loc;
+       peff_attributes} =
+    Te.effect_constructor
+      (map_loc sub peff_name)
+      (map_effect_constructor_kind sub peff_kind)
+      ~loc:(sub.location sub peff_loc)
+      ~attrs:(sub.attributes sub peff_attributes)
   end
 
   module CT = struct
@@ -2435,6 +2515,7 @@ end = struct
       | Psig_type (rf, l) -> type_ ~loc rf (List.map (sub.type_declaration sub) l)
       | Psig_typext te -> type_extension ~loc (sub.type_extension sub te)
       | Psig_exception ed -> exception_ ~loc (sub.extension_constructor sub ed)
+      | Psig_effect ed -> effect_ ~loc (sub.effect_constructor sub ed)
       | Psig_module x -> module_ ~loc (sub.module_declaration sub x)
       | Psig_recmodule l ->
           rec_module ~loc (List.map (sub.module_declaration sub) l)
@@ -2483,6 +2564,7 @@ end = struct
       | Pstr_type (rf, l) -> type_ ~loc rf (List.map (sub.type_declaration sub) l)
       | Pstr_typext te -> type_extension ~loc (sub.type_extension sub te)
       | Pstr_exception ed -> exception_ ~loc (sub.extension_constructor sub ed)
+      | Pstr_effect ed -> effect_ ~loc (sub.effect_constructor sub ed)
       | Pstr_module x -> module_ ~loc (sub.module_binding sub x)
       | Pstr_recmodule l -> rec_module ~loc (List.map (sub.module_binding sub) l)
       | Pstr_modtype x -> modtype ~loc (sub.module_type_declaration sub x)
@@ -2605,6 +2687,7 @@ end = struct
       | Ppat_unpack s -> unpack ~loc ~attrs (map_loc sub s)
       | Ppat_open (lid,p) -> open_ ~loc ~attrs (map_loc sub lid) (sub.pat sub p)
       | Ppat_exception p -> exception_ ~loc ~attrs (sub.pat sub p)
+      | Ppat_effect(p1, p2) -> effect_ ~loc ~attrs (sub.pat sub p1) (sub.pat sub p2)
       | Ppat_extension x -> extension ~loc ~attrs (sub.extension sub x)
   end
 
@@ -2705,6 +2788,7 @@ end = struct
       typ = T.map;
       type_extension = T.map_type_extension;
       extension_constructor = T.map_extension_constructor;
+      effect_constructor = T.map_effect_constructor;
       value_description =
         (fun this {pval_name; pval_type; pval_prim; pval_loc;
                    pval_attributes} ->
@@ -2967,6 +3051,7 @@ module Outcometree = struct
     | Oext_first
     | Oext_next
     | Oext_exception
+    | Oext_effect
 
   type out_phrase (*IF_CURRENT = Outcometree.out_phrase *) =
     | Ophr_eval of out_value * out_type
@@ -3008,6 +3093,7 @@ let shallow_identity =
     typ                     = id;
     type_extension          = id;
     extension_constructor   = id;
+    effect_constructor      = id;
     value_description       = id;
     pat                     = id;
     expr                    = id;
@@ -3056,6 +3142,7 @@ let failing_mapper =
     typ                     = fail;
     type_extension          = fail;
     extension_constructor   = fail;
+    effect_constructor      = fail;
     value_description       = fail;
     pat                     = fail;
     expr                    = fail;

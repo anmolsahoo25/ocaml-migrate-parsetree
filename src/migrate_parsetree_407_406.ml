@@ -103,6 +103,7 @@ let copy_mapper = fun
     expr = (fun _ x -> copy_expr (expr mapper (R.copy_expr x)));
     extension = (fun _ x -> copy_extension (extension mapper (R.copy_extension x)));
     extension_constructor = (fun _ x -> copy_extension_constructor (extension_constructor mapper (R.copy_extension_constructor x)));
+    effect_constructor = (fun _ x -> x);
     include_declaration = (fun _ x -> copy_include_declaration (include_declaration mapper (R.copy_include_declaration x)));
     include_description = (fun _ x -> copy_include_description (include_description mapper (R.copy_include_description x)));
     label_declaration = (fun _ x -> copy_label_declaration (label_declaration mapper (R.copy_label_declaration x)));

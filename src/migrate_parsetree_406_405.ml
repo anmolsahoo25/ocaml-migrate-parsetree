@@ -54,6 +54,7 @@ let copy_mapper = fun
      expr;
      extension;
      extension_constructor;
+     effect_constructor = _effect_constructor;
      include_declaration;
      include_description;
      label_declaration;
